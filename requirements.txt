@@ -1,0 +1,4 @@
+flask
+numpy
+pymongo[srv]
+pandas
