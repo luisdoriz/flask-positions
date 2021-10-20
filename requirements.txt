@@ -2,5 +2,6 @@ flask
 numpy
 pymongo[srv]
 pandas
+gevent
 python-dotenv
-gunicorn
+dnspython
