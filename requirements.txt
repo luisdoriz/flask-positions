@@ -5,3 +5,4 @@ pandas
 gevent
 python-dotenv
 dnspython
+gunicorn
