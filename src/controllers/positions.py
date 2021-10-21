@@ -27,7 +27,9 @@ class CoordsProcesor:
     def read_data(self):
         client = MongoClient(MONGO_DB)
         my_db = client["beacons"]
-        df = pd.DataFrame(list(my_db["raw_beacons_data"].find()))
+        df = pd.DataFrame(
+            list(my_db["raw_beacons_data"].find().sort({"_id": -1}).limit(50))
+        )
         df = df[pd.isna(df["meters"]) == False]
         df = df.sort_values(["mac_address", "created_at"])
         return df
