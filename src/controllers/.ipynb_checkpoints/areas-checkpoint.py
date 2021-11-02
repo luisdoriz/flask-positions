@@ -7,14 +7,14 @@ import os
 
 MAIN_API_URL = os.getenv("MAIN_API_URL")
 MONGO_DB = os.getenv("MONGO_DB")
-MAIN_API_TOKEN = os.getenv("MAIN_API_TOKEN")
+
 
 class AreaProcessor:
     def __init__(self):
         super(AreaProcessor, self).__init__()
         self.INT_MAX = 10000
         self.beacons_data = self.get_beacons_data()
-        self.areas_data = []
+        self.areas = {}
 
     def get_orientation(self, p1, p2, p3):
 
@@ -120,32 +120,14 @@ class AreaProcessor:
         # Return true if count is odd, false otherwise
         return count % 2 == 1
 
-    def fetch_areas(self, mac_address):
-        url = MAIN_API_URL
-        headers = {
-            "Authorization": f"Bearer {MAIN_API_TOKEN}"
-        }
-        response = requests.get(
-            url, json={"macAddress": mac_address}, headers=headers
-        ).json()
-        data = response.get("data")
-        beacons = [beacon.get("macAddress") for beacon in data.get("beacons")]
-        gateways = data.get("areaVertices")
-        return gateways, beacons
-
     def get_beacon_facility(self, mac_address):
-        if len(self.areas_data) > 0:
-            try:
-                return next(
-                    data.get("gateways")
-                    for data in self.areas_data
-                    if mac_address in data.get("beacons")
-                )
-            except StopIteration as e:
-                pass
-        gateways, beacons = self.fetch_areas(mac_address)
-        self.areas_data.append({"gateways": gateways, "beacons": beacons})
-        return gateways
+        areas = self.areas.get(mac_address)
+        if areas is None:
+            url = f"{MAIN_API_URL}/api/areas/beacon"
+            r = requests.get(url, json={"macAddress": mac_address}).json().get("data")
+            self.areas[mac_address] = r
+            areas = r
+        return areas
 
     def process_beacons_data(self, beacon_data):
         point = [beacon_data.get("x"), beacon_data.get("y")]
@@ -232,17 +214,17 @@ class AreaProcessor:
         df = df.round()
         return self.clean_by_beacons(df)
 
-    def proccess_areas(self):
+    def save_positions(self, data):
+        body = {"positions": data}
+        requests.put("{MAIN_API_URL}/api/positions", body)
+
+    def main(self):
         rows = []
         for beacon in self.beacons_data:
             try:
                 row = self.process_beacons_data(beacon)
                 rows.append(row)
-            except Exception as e:
-                print(e)
+            except:
                 continue
-        return self.clean_data(rows)
-
-    def main(self):
-        rows = self.proccess_areas()
-        print(rows)
+        data = self.clean_data(rows)
+        print(data)

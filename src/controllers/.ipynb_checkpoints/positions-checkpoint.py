@@ -5,40 +5,38 @@ import requests
 import os
 
 
+
+
 class CoordsProcesor:
     def __init__(self):
         super(CoordsProcesor, self).__init__()
-        self.url = f"{os.getenv('MAIN_API_URL')}/gateways"
+        self.url = f"{os.getenv("MAIN_API_URL")}/gateways"
         self.MONGO_DB = os.getenv("MONGO_DB")
-        self.headers = {"Authorization": f"Bearer {os.getenv('MAIN_API_TOKEN')}"}
+        self.headers = {
+            "Authorization": os.getenv("MAIN_API_TOKEN")
+        }
         self.gateways = []
 
     def fetch_gateways(self, mac_address):
-        data = requests.get(
-            self.url, json={"macAddress": mac_address}, headers=self.headers
-        )
+        data = requests.get(self.url, json={"macAddress": mac_address}, headers=self.headers)
         data = data.json().get("data")
         beacons = [beacon.get("macAddress") for beacon in data.get("beacons")]
         gateways = dict()
         for gateway in data.get("gateways"):
             gateways[gateway.get("macAddress")] = {
-                "x": gateway.get("x"),
-                "y": gateway.get("y"),
-            }
+                        "x": gateway.get("x"),
+                        "y": gateway.get("y"),
+                    }
         return gateways, beacons
 
     def get_gateways(self, mac_address):
         if len(self.gateways) > 0:
             try:
-                return next(
-                    data.get("gateways")
-                    for data in self.gateways
-                    if mac_address in data.get("beacons")
-                )
+                return next(data.get("gateways") for data in self.gateways if mac_address in data.get("beacons"))
             except StopIteration as e:
                 pass
         gateways, beacons = self.fetch_gateways(mac_address)
-        self.gateways.append({"gateways": gateways, "beacons": beacons})
+        self.gateways.append({"gateways": gateways, "beacons": beacons })
         return gateways
 
     def read_data(self):
@@ -52,7 +50,7 @@ class CoordsProcesor:
         return df
 
     def insert_clean_positions(self, data):
-        client = MongoClient(self.MONGO_DB)
+        client = MongoClient(MONGO_DB)
         my_db = client["beacons"]
         my_db["beacons_data"].insert_many(data)
         return True
