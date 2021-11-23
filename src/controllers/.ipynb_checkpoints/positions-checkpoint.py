@@ -5,20 +5,19 @@ import requests
 import os
 
 
-
-
 class CoordsProcesor:
-    def __init__(self):
+    def __init__(self, params):
         super(CoordsProcesor, self).__init__()
-        self.url = f"{os.getenv("MAIN_API_URL")}/gateways"
+        self.url = f"{os.getenv('MAIN_API_URL')}/api/gateways"
         self.MONGO_DB = os.getenv("MONGO_DB")
-        self.headers = {
-            "Authorization": os.getenv("MAIN_API_TOKEN")
-        }
+        self.headers = {"Authorization": f"Bearer {os.getenv('MAIN_API_TOKEN')}"}       
+        self.timestamp = params.get("timestamp")
+        print(self.timestamp)
         self.gateways = []
 
     def fetch_gateways(self, mac_address):
         data = requests.get(self.url, json={"macAddress": mac_address}, headers=self.headers)
+        
         data = data.json().get("data")
         beacons = [beacon.get("macAddress") for beacon in data.get("beacons")]
         gateways = dict()
@@ -43,14 +42,16 @@ class CoordsProcesor:
         client = MongoClient(self.MONGO_DB)
         my_db = client["beacons"]
         df = pd.DataFrame(
-            list(my_db["raw_beacons_data"].find().sort("_id", -1).limit(50))
+            list(my_db["raw_beacons_data"].find().sort("_id", -1))
         )
+        if len(df) ==0:
+            return df
         df = df[pd.isna(df["meters"]) == False]
         df = df.sort_values(["mac_address", "created_at"])
         return df
 
     def insert_clean_positions(self, data):
-        client = MongoClient(MONGO_DB)
+        client = MongoClient(self.MONGO_DB)
         my_db = client["beacons"]
         my_db["beacons_data"].insert_many(data)
         return True
@@ -76,7 +77,7 @@ class CoordsProcesor:
         # Rotate points so that B is at x-axis.
         # C2 (U, 0, 0)
         U = numpy.linalg.norm(gateway2a)  # Distance between origin (C1) and C2
-
+        
         # Rotate C accordingly
         # C3 (Vx, Vy, 0)
         # gateway2a/U = unit vector of point 2a
@@ -97,6 +98,8 @@ class CoordsProcesor:
             numpy.linalg.norm(gateway3 - gateway1 - Vx * (gateway2a / U))
         )
         loc = gateway1 + unitvector2 * rx + ry * unitvector3  #
+        loc[0] = round(loc[0], 2)
+        loc[1] = round(loc[1], 2)
         return loc
 
     def process_beacon_data(self, beacon, data, gateways):
@@ -115,9 +118,9 @@ class CoordsProcesor:
                 errors.append(local)
                 continue
             a, b, c = gateways_data
-            result = self.trilateration(a, b, c)
-            x, y = result
-            output = {"x": x, "y": y, "created_at": created_at, "beacon": beacon}
+            x, y  = self.trilateration(a, b, c)
+
+            output = {"x": str(x), "y": str(y), "created_at": created_at, "beacon": beacon}
             outputs.append(output)
         return outputs
 
@@ -134,4 +137,6 @@ class CoordsProcesor:
 
     def main(self):
         df = self.read_data()
+        df["meters"] = df["meters"].round(6)
+        print(len(df))
         self.process_data(df)

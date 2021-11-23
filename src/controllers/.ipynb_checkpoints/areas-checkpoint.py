@@ -7,15 +7,15 @@ import os
 
 MAIN_API_URL = os.getenv("MAIN_API_URL")
 MONGO_DB = os.getenv("MONGO_DB")
+MAIN_API_TOKEN = os.getenv("MAIN_API_TOKEN")
 
-
-class AreaProcessor:
+class AreaProcessor():
     def __init__(self):
         super(AreaProcessor, self).__init__()
         self.INT_MAX = 10000
         self.beacons_data = self.get_beacons_data()
-        self.areas = {}
-
+        self.areas_data = []
+        
     def get_orientation(self, p1, p2, p3):
 
         # difference in slopes between points p1-p2 and p2-p3
@@ -30,7 +30,7 @@ class AreaProcessor:
             return 1  # Clockwise
         else:
             return 2  # Counterclockwise
-
+        
     def is_on_segment(self, p1, point, p2):
         # Check if point is in segment p1p2
         if (
@@ -42,7 +42,6 @@ class AreaProcessor:
             return True
 
         return False
-
     def get_intersect(self, p1, p2, p3, inf):
 
         # Find the four orientations needed for
@@ -50,9 +49,7 @@ class AreaProcessor:
         o1 = self.get_orientation(
             p1, p2, p3
         )  # checks if p3 (point we're looking for) is right or left of segment p1p2
-        o2 = self.get_orientation(
-            p1, p2, inf
-        )  # checks if inf is right or left of segment p1p2
+        o2 = self.get_orientation(p1, p2, inf)  # checks if inf is right or left of segment p1p2
         o3 = self.get_orientation(
             p3, inf, p1
         )  # checks if p1 (part of segment p1p2) is up or down of segment p3inf
@@ -89,6 +86,7 @@ class AreaProcessor:
 
         return False
 
+
     def is_inside_area(self, area, point):
         n = len(area)
         if n < 3:
@@ -119,40 +117,57 @@ class AreaProcessor:
                 break
         # Return true if count is odd, false otherwise
         return count % 2 == 1
+    
+    def fetch_areas(self, mac_address):
+        url = MAIN_API_URL + "/areas/beacon"
+        headers = {
+            "Authorization": f"Bearer {MAIN_API_TOKEN}"
+        }
+        response = requests.get(url, json={"macAddress": mac_address}, headers=headers).json()
+        data = response.get("data")
+        beacons = [beacon.get("macAddress") for beacon in data.get("beacons")]
+        gateways = data.get("areaVertices")
+        return gateways, beacons
+
 
     def get_beacon_facility(self, mac_address):
-        areas = self.areas.get(mac_address)
-        if areas is None:
-            url = f"{MAIN_API_URL}/api/areas/beacon"
-            r = requests.get(url, json={"macAddress": mac_address}).json().get("data")
-            self.areas[mac_address] = r
-            areas = r
-        return areas
-
+        try:
+            if len(self.areas_data) > 0:
+                try:
+                    return next(data.get("gateways") for data in self.areas_data if mac_address in data.get("beacons"))
+                except StopIteration as e:
+                    pass
+            gateways, beacons = self.fetch_areas(mac_address)
+            self.areas_data.append({"gateways": gateways, "beacons": beacons })
+            return gateways
+        except Exception as e: 
+            print("error", e)
+            return []
+    
     def process_beacons_data(self, beacon_data):
-        point = [beacon_data.get("x"), beacon_data.get("y")]
+        point = [float(beacon_data.get("x")), float(beacon_data.get("y"))]
         mac_address = beacon_data.get("beacon")
         areas = self.get_beacon_facility(mac_address)
-        area_id = next(
-            area.get("idArea")
-            for area in areas
-            if self.is_inside_area(area.get("vertices"), point)
-        )
-        output = {
-            "beacon": mac_address,
-            "area": area_id,
-            "x": point[0],
-            "y": point[1],
-            "created_at": beacon_data.get("created_at"),
-        }
-        return output
-
+        area_id = next(area.get("idArea") for area in areas if self.is_inside_area(area.get("vertices"), point))
+        try:
+            output = {
+                "beacon": mac_address,
+                "area": area_id,
+                "x": point[0],
+                "y": point[1],
+                "created_at": beacon_data.get("created_at")
+            }
+            return output
+        except Exception as e:
+            print("error", e)
+            return None
+        
     def get_beacons_data(self):
         client = MongoClient(MONGO_DB)
         my_db = client["beacons"]
         output = list(my_db["beacons_data"].find())
         return output
-
+    
     def clean_by_rows(self, data):
         current_timestamp = None
         first_timestamp = None
@@ -169,26 +184,25 @@ class AreaProcessor:
             seconds = timestamp - current_timestamp
             x, y = coords
             row_x, row_y = [row.get("x"), row.get("y")]
-            if seconds > 5 and row_x != x and row_y != y:
-                sum_of_time = current_timestamp - first_timestamp
-                start = datetime.fromtimestamp(first_timestamp)
-                end = datetime.fromtimestamp(current_timestamp)
-                output = {
+            if seconds > 5 and row_x !=x and row_y !=y:
+                sum_of_time = current_timestamp -first_timestamp
+                start = str(datetime.fromtimestamp(first_timestamp))
+                end = str(datetime.fromtimestamp(current_timestamp))
+                output= {
                     "from": start,
                     "to": end,
                     "time_spent": sum_of_time,
-                    "created_at": row.get("created_at"),
                     "beacon": row.get("beacon"),
                     "area": row.get("area"),
                     "x": row.get("x"),
-                    "y": row.get("y"),
+                    "y": row.get("y")
                 }
                 new_rows.append(output)
                 first_timestamp = timestamp
                 coords = [row.get("x"), row.get("y")]
             current_timestamp = timestamp
         return new_rows
-
+    
     def clean_by_areas(self, data):
         areas = list(data.area.unique())
         rows = []
@@ -197,8 +211,8 @@ class AreaProcessor:
             new_rows = self.clean_by_rows(area_data)
             rows.extend(new_rows)
         return rows
-
-    def clean_by_beacons(self, data):
+        
+    def clean_by_beacons(self, data):        
         beacons = list(data.beacon.unique())
         rows = []
         for beacon in beacons:
@@ -206,25 +220,36 @@ class AreaProcessor:
             new_rows = self.clean_by_areas(beacon_data)
             rows.extend(new_rows)
         return rows
-
+            
     def clean_data(self, data):
         df = pd.DataFrame(data)
         df = df.sort_values("created_at")
-        df["created_at"] = pd.to_datetime(df["created_at"])
+        df["created_at"] =  pd.to_datetime(df['created_at'])
         df = df.round()
         return self.clean_by_beacons(df)
-
-    def save_positions(self, data):
+    
+    def post_positions(self, body):
+        url = MAIN_API_URL + "/positions"
+        headers = {
+            "Authorization": f"Bearer {MAIN_API_TOKEN}"
+        }
         body = {"positions": data}
-        requests.put("{MAIN_API_URL}/api/positions", body)
+        response = requests.put(url, json=body, headers=headers).json()
 
-    def main(self):
+    
+    def proccess_areas(self):
         rows = []
         for beacon in self.beacons_data:
             try:
                 row = self.process_beacons_data(beacon)
-                rows.append(row)
-            except:
+                if row is not None:
+                    rows.append(row)
+            except Exception as e:
                 continue
-        data = self.clean_data(rows)
-        print(data)
+        if len(rows) > 0:
+            body =  self.clean_data(rows)
+            self.post_positions(body)
+
+    def main(self):
+        rows = self.proccess_areas()
+        print(rows)
