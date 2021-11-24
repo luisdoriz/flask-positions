@@ -195,6 +195,18 @@ class AreaProcessor:
                 current_timestamp = timestamp
                 first_timestamp = timestamp
                 coords = [row.get("x"), row.get("y")]
+                if len(data) == 1:
+                    from_to = str(datetime.fromtimestamp(current_timestamp))
+                    output = {
+                        "from": from_to,
+                        "to": from_to,
+                        "time_spent": 0,
+                        "beacon": row.get("beacon"),
+                        "area": row.get("area"),
+                        "x": row.get("x"),
+                        "y": row.get("y"),
+                    }
+                    new_rows.append(output)
                 continue
             seconds = timestamp - current_timestamp
             x, y = coords
