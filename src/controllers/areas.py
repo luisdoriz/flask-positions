@@ -199,7 +199,7 @@ class AreaProcessor:
             seconds = timestamp - current_timestamp
             x, y = coords
             row_x, row_y = [row.get("x"), row.get("y")]
-            if seconds > 5 and row_x != x and row_y != y:
+            if seconds > 5 and round(row_x) != round(x) and round(row_y) != round(y):
                 sum_of_time = current_timestamp - first_timestamp
                 start = str(datetime.fromtimestamp(first_timestamp))
                 end = str(datetime.fromtimestamp(current_timestamp))
@@ -239,7 +239,6 @@ class AreaProcessor:
     def clean_data(self, data):
         df = pd.DataFrame(data)
         df = df.sort_values("created_at")
-        df = df.round()
         return self.clean_by_beacons(df)
 
     def post_positions(self, data):

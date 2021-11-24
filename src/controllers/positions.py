@@ -121,6 +121,8 @@ class CoordsProcesor:
             local = data[data["created_at"] == created_at]
             local_sorted = local.sort_values(["meters"])
             local_gateways = local_sorted.to_dict("records")
+            print(local_gateways)
+            print(gateways)
             gateways_data = [
                 {"position": gateways[x.get("gateway")], "meters": x.get("meters")}
                 for x in local_gateways
