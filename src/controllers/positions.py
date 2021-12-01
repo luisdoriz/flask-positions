@@ -130,7 +130,7 @@ class CoordsProcesor:
             if len(gateways_data) < 3:
                 errors.append(local)
                 continue
-            a, b, c = gateways_data
+            a, b, c = gateways_data[:3]
             x, y = self.trilateration(a, b, c)
 
             output = {
